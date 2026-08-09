@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Straßenreinigung Steglitz-Zehlendorf</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+  <header>
+    <div>
+      <h1>Straßenreinigung Steglitz-Zehlendorf</h1>
+      <p>Reinigungsklassen nach Straßenreinigungsverzeichnis (BSR)</p>
+    </div>
+    <p id="count">Lade Daten …</p>
+  </header>
+  <div style="position:relative;flex:1;min-height:0;">
+    <div id="map"></div>
+    <div id="loading">Karte wird geladen …</div>
+  </div>
+  <footer>
+    Datenquelle: Berliner Stadtreinigungsbetriebe (BSR) &amp; Bezirksgrenzen ALKIS Berlin, über daten.berlin.de / govdata.de / gdi.berlin.de · Kartendarstellung: Leaflet &amp; © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>-Mitwirkende
+  </footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="app.js"></script>
+
+<!-- Visitor analytics (GoatCounter) -->
+<script data-goatcounter="https://jms-strassenreinigung.goatcounter.com/count"
+        async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
