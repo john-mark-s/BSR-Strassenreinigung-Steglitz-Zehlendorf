@@ -2,18 +2,31 @@
 // Loads street + district-boundary data from separate GeoJSON files (data/)
 // and renders an interactive Leaflet map.
 
+// All classes share the same color/frequency mapping; line weight now scales
+// with zoom (see weightForZoom) rather than being fixed, so a district-wide
+// view isn't drowned in thick lines.
 const CLASS_INFO = {
-  "A1a": { label: "A1a — 10×/Woche",       color: "#b91c1c", weight: 3, group: "A" },
-  "A1b": { label: "A1b — 7×/Woche",        color: "#e0522a", weight: 3,   group: "A" },
-  "A2a": { label: "A2a — 6×/Woche",        color: "#f0932b", weight: 3, group: "A" },
-  "A2b": { label: "A2b — 5×/Woche",        color: "#eec643", weight: 3,   group: "A" },
-  "A3":  { label: "A3 — 3×/Woche",         color: "#9cb84e", weight: 3, group: "A" },
-  "A4":  { label: "A4 — 1×/Woche",         color: "#3f9142", weight: 3, group: "A" },
-  "B":   { label: "B — i.d.R. 1×/Woche",   color: "#2f8fa3", weight: 3, group: "BCP" },
-  "C":   { label: "C — i.d.R. 1×/Woche",   color: "#6a63c9", weight: 3, group: "BCP" },
-  "P":   { label: "P — Sonderfläche/Platz",color: "#8a8478", weight: 3, group: "BCP" }
+  "A1a": { label: "A1a — 10×/Woche",       color: "#b91c1c", group: "A" },
+  "A1b": { label: "A1b — 7×/Woche",        color: "#e0522a", group: "A" },
+  "A2a": { label: "A2a — 6×/Woche",        color: "#f0932b", group: "A" },
+  "A2b": { label: "A2b — 5×/Woche",        color: "#eec643", group: "A" },
+  "A3":  { label: "A3 — 3×/Woche",         color: "#9cb84e", group: "A" },
+  "A4":  { label: "A4 — 1×/Woche",         color: "#3f9142", group: "A" },
+  "B":   { label: "B — i.d.R. 1×/Woche",   color: "#2f8fa3", group: "BCP" },
+  "C":   { label: "C — i.d.R. 1×/Woche",   color: "#6a63c9", group: "BCP" },
+  "P":   { label: "P — Sonderfläche/Platz",color: "#8a8478", group: "BCP" }
 };
-const DEFAULT_STYLE = { color: "#999", weight: 3, opacity: 0.9 };
+const DEFAULT_COLOR = "#999";
+
+// Thin out at low zoom (whole-district/city view), full weight from zoom 15
+// up (roughly street-level). Tweak minZ/maxZ/minW/maxW to change the taper.
+function weightForZoom(zoom) {
+  const minZ = 10, maxZ = 15, minW = 1, maxW = 3;
+  if (zoom >= maxZ) return maxW;
+  if (zoom <= minZ) return minW;
+  const t = (zoom - minZ) / (maxZ - minZ);
+  return minW + t * (maxW - minW);
+}
 
 // Default view on load: Sundgauer Straße (Zehlendorf), rather than the
 // whole district. Change this to re-center the initial view elsewhere.
@@ -23,9 +36,17 @@ const DEFAULT_VIEW = { center: [52.4378, 13.2729], zoom: 16 };
 // how far out the map can be zoomed/panned, without cutting off basemap tiles.
 const BERLIN_MAX_BOUNDS = L.latLngBounds([52.320, 13.045], [52.685, 13.786]);
 
-function styleFor(feature) {
+// A feature's rendered style: normal per-class color at the current zoom's
+// weight, or — if flagged by the search box — a gold highlight instead.
+// Centralizing this means hover, zoom, and search-highlight all stay
+// consistent no matter what order they happen in.
+function styleFor(feature, zoom) {
+  const w = weightForZoom(zoom);
+  if (feature.properties.__hl) {
+    return { color: "#ffd23f", weight: w + 3, opacity: 1 };
+  }
   const info = CLASS_INFO[feature.properties.klasse];
-  return info ? { color: info.color, weight: info.weight, opacity: 0.9 } : DEFAULT_STYLE;
+  return { color: info ? info.color : DEFAULT_COLOR, weight: w, opacity: 0.9 };
 }
 
 function popupFor(feature) {
@@ -123,11 +144,20 @@ function buildSearch(map, streetLayer) {
       const layers = index.get(name);
       if (!layers || !layers.length) return;
 
-      map.flyToBounds(L.featureGroup(layers).getBounds(), { padding: [40, 40], maxZoom: 17, duration: 0.6 });
+      const bounds = L.featureGroup(layers).getBounds();
+      // For a short street, fit its bounds normally (up to 17 — don't zoom
+      // in absurdly close). For a long street, that "fit" zoom would be far
+      // too low (you'd see most of the district) — so floor it at 15,
+      // trading "see the whole street" for "stay genuinely zoomed in."
+      const fitZoom = map.getBoundsZoom(bounds, false, L.point(40, 40));
+      const targetZoom = Math.max(Math.min(fitZoom, 17), 15);
+      map.flyTo(bounds.getCenter(), targetZoom, { duration: 0.6 });
 
       if (highlightTimer) clearTimeout(highlightTimer);
-      layers.forEach(lyr => lyr.setStyle({ color: "#ffd23f", weight: (lyr.options.weight || 2) + 3, opacity: 1 }));
-      highlightTimer = setTimeout(() => layers.forEach(lyr => streetLayer.resetStyle(lyr)), 1800);
+      layers.forEach(lyr => { lyr.feature.properties.__hl = true; streetLayer.resetStyle(lyr); });
+      highlightTimer = setTimeout(() => {
+        layers.forEach(lyr => { lyr.feature.properties.__hl = false; streetLayer.resetStyle(lyr); });
+      }, 1800);
 
       input.value = name;
       render([]);
@@ -172,12 +202,16 @@ async function init() {
   const countEl = document.getElementById("count");
 
   const map = L.map("map", {
-    zoomControl: true,
+    zoomControl: false,
     minZoom: 10,
     maxZoom: 18,
     maxBounds: BERLIN_MAX_BOUNDS,
     maxBoundsViscosity: 1.0
   }).setView(DEFAULT_VIEW.center, DEFAULT_VIEW.zoom);
+
+  // Zoom control moved to bottom-left, separate from the search box (top-left)
+  // and legend (bottom-right), so nothing crowds or stacks on top of anything else.
+  L.control.zoom({ position: "bottomleft" }).addTo(map);
 
   // No "bounds" restriction here on purpose — tiles render everywhere,
   // only panning/zooming is capped (via maxBounds above). This is what
@@ -205,13 +239,17 @@ async function init() {
     }).addTo(map);
 
     const streetLayer = L.geoJSON(streetData, {
-      style: styleFor,
+      style: (feature) => styleFor(feature, map.getZoom()),
       onEachFeature: (feature, lyr) => {
         lyr.bindPopup(popupFor(feature));
         lyr.on("mouseover", function () { this.setStyle({ weight: (this.options.weight || 2) + 2 }); });
         lyr.on("mouseout", function () { streetLayer.resetStyle(this); });
       }
     }).addTo(map);
+
+    // Re-apply styles on every zoom change so line weight actually tapers
+    // in/out live, not just the next time something is hovered/reset.
+    map.on("zoomend", () => streetLayer.setStyle((feature) => styleFor(feature, map.getZoom())));
 
     // District outline: a light halo underneath + solid black line on top,
     // so the boundary reads clearly regardless of what's beneath it.
