@@ -76,7 +76,6 @@ function buildLegend(map, streetLayer) {
 
 async function init() {
   const loadingEl = document.getElementById("loading");
-  const countEl = document.getElementById("count");
 
   const map = L.map("map", {
     zoomControl: true,
@@ -92,7 +91,7 @@ async function init() {
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     minZoom: 10,
     maxZoom: 19,
-    attribution: "&copy; OpenStreetMap contributors"
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
   }).addTo(map);
 
   try {
@@ -135,9 +134,7 @@ async function init() {
     // to DEFAULT_VIEW above (Sundgauer Straße), not "zoom to fit all streets".
     buildLegend(map, streetLayer);
 
-    countEl.textContent = `${streetData.features.length} Straßenabschnitte`;
   } catch (err) {
-    countEl.textContent = "Fehler beim Laden der Daten";
     console.error(err);
   } finally {
     loadingEl.classList.add("hidden");
