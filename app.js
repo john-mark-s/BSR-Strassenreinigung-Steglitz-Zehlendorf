@@ -91,7 +91,7 @@ async function init() {
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     minZoom: 10,
     maxZoom: 19,
-    attribution: "&copy; OpenStreetMap contributors"
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
   }).addTo(map);
 
   try {
