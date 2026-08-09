@@ -3,17 +3,17 @@
 // and renders an interactive Leaflet map.
 
 const CLASS_INFO = {
-  "A1a": { label: "A1a — 10×/Woche",       color: "#b91c1c", weight: 4.5, group: "A" },
-  "A1b": { label: "A1b — 7×/Woche",        color: "#e0522a", weight: 4,   group: "A" },
-  "A2a": { label: "A2a — 6×/Woche",        color: "#f0932b", weight: 3.5, group: "A" },
+  "A1a": { label: "A1a — 10×/Woche",       color: "#b91c1c", weight: 3, group: "A" },
+  "A1b": { label: "A1b — 7×/Woche",        color: "#e0522a", weight: 3,   group: "A" },
+  "A2a": { label: "A2a — 6×/Woche",        color: "#f0932b", weight: 3, group: "A" },
   "A2b": { label: "A2b — 5×/Woche",        color: "#eec643", weight: 3,   group: "A" },
-  "A3":  { label: "A3 — 3×/Woche",         color: "#9cb84e", weight: 2.4, group: "A" },
-  "A4":  { label: "A4 — 1×/Woche",         color: "#3f9142", weight: 1.8, group: "A" },
-  "B":   { label: "B — i.d.R. 1×/Woche",   color: "#2f8fa3", weight: 2.4, group: "BCP" },
-  "C":   { label: "C — i.d.R. 1×/Woche",   color: "#6a63c9", weight: 2.4, group: "BCP" },
-  "P":   { label: "P — Sonderfläche/Platz",color: "#8a8478", weight: 2.4, group: "BCP" }
+  "A3":  { label: "A3 — 3×/Woche",         color: "#9cb84e", weight: 3, group: "A" },
+  "A4":  { label: "A4 — 1×/Woche",         color: "#3f9142", weight: 3, group: "A" },
+  "B":   { label: "B — i.d.R. 1×/Woche",   color: "#2f8fa3", weight: 3, group: "BCP" },
+  "C":   { label: "C — i.d.R. 1×/Woche",   color: "#6a63c9", weight: 3, group: "BCP" },
+  "P":   { label: "P — Sonderfläche/Platz",color: "#8a8478", weight: 3, group: "BCP" }
 };
-const DEFAULT_STYLE = { color: "#999", weight: 1.5, opacity: 0.9 };
+const DEFAULT_STYLE = { color: "#999", weight: 3, opacity: 0.9 };
 
 // Default view on load: Sundgauer Straße (Zehlendorf), rather than the
 // whole district. Change this to re-center the initial view elsewhere.
@@ -74,8 +74,102 @@ function buildLegend(map, streetLayer) {
   legend.addTo(map);
 }
 
+// Groups the already-loaded street layers by name (many segments share one
+// street name), so a search only needs to filter data already in memory —
+// no external geocoding, no new data file.
+function buildStreetIndex(streetLayer) {
+  const index = new Map();
+  streetLayer.eachLayer(lyr => {
+    const name = (lyr.feature.properties.strasse || "").trim();
+    if (!name) return;
+    if (!index.has(name)) index.set(name, []);
+    index.get(name).push(lyr);
+  });
+  return index;
+}
+
+function buildSearch(map, streetLayer) {
+  const index = buildStreetIndex(streetLayer);
+  const allNames = Array.from(index.keys()).sort((a, b) => a.localeCompare(b, "de"));
+
+  const control = L.control({ position: "topleft" });
+  control.onAdd = function () {
+    const div = L.DomUtil.create("div", "search-control");
+    div.innerHTML = `
+      <input type="text" class="search-input" placeholder="Straße suchen …" autocomplete="off">
+      <ul class="search-results"></ul>
+    `;
+    L.DomEvent.disableClickPropagation(div);
+    L.DomEvent.disableScrollPropagation(div);
+
+    const input = div.querySelector(".search-input");
+    const resultsEl = div.querySelector(".search-results");
+    let currentMatches = [];
+    let activeIndex = -1;
+    let highlightTimer = null;
+
+    function render(matches) {
+      currentMatches = matches;
+      activeIndex = -1;
+      resultsEl.innerHTML = matches.map((name, i) => `<li data-i="${i}">${name}</li>`).join("");
+      resultsEl.style.display = matches.length ? "block" : "none";
+    }
+
+    function updateActive() {
+      Array.from(resultsEl.children).forEach((li, i) => li.classList.toggle("active", i === activeIndex));
+    }
+
+    function selectStreet(name) {
+      const layers = index.get(name);
+      if (!layers || !layers.length) return;
+
+      map.flyToBounds(L.featureGroup(layers).getBounds(), { padding: [40, 40], maxZoom: 17, duration: 0.6 });
+
+      if (highlightTimer) clearTimeout(highlightTimer);
+      layers.forEach(lyr => lyr.setStyle({ color: "#ffd23f", weight: (lyr.options.weight || 2) + 3, opacity: 1 }));
+      highlightTimer = setTimeout(() => layers.forEach(lyr => streetLayer.resetStyle(lyr)), 1800);
+
+      input.value = name;
+      render([]);
+      input.blur();
+    }
+
+    input.addEventListener("input", () => {
+      const q = input.value.trim().toLowerCase();
+      if (!q) { render([]); return; }
+      const starts = [], contains = [];
+      for (const name of allNames) {
+        const ln = name.toLowerCase();
+        if (ln.startsWith(q)) starts.push(name);
+        else if (ln.includes(q)) contains.push(name);
+      }
+      render([...starts, ...contains].slice(0, 8));
+    });
+
+    input.addEventListener("keydown", (e) => {
+      if (!currentMatches.length) return;
+      if (e.key === "ArrowDown") { e.preventDefault(); activeIndex = Math.min(activeIndex + 1, currentMatches.length - 1); updateActive(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); activeIndex = Math.max(activeIndex - 1, 0); updateActive(); }
+      else if (e.key === "Enter") { e.preventDefault(); selectStreet(currentMatches[activeIndex >= 0 ? activeIndex : 0]); }
+      else if (e.key === "Escape") { render([]); input.blur(); }
+    });
+
+    resultsEl.addEventListener("click", (e) => {
+      const li = e.target.closest("li");
+      if (!li) return;
+      selectStreet(currentMatches[parseInt(li.getAttribute("data-i"), 10)]);
+    });
+
+    document.addEventListener("click", (e) => { if (!div.contains(e.target)) render([]); });
+
+    return div;
+  };
+  control.addTo(map);
+}
+
 async function init() {
   const loadingEl = document.getElementById("loading");
+  const countEl = document.getElementById("count");
 
   const map = L.map("map", {
     zoomControl: true,
@@ -91,7 +185,7 @@ async function init() {
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     minZoom: 10,
     maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
+    attribution: "&copy; OpenStreetMap contributors"
   }).addTo(map);
 
   try {
@@ -133,8 +227,11 @@ async function init() {
     // NOTE: no map.fitBounds() here on purpose — the initial view is fixed
     // to DEFAULT_VIEW above (Sundgauer Straße), not "zoom to fit all streets".
     buildLegend(map, streetLayer);
+    buildSearch(map, streetLayer);
 
+    countEl.textContent = `${streetData.features.length} Straßenabschnitte`;
   } catch (err) {
+    countEl.textContent = "Fehler beim Laden der Daten";
     console.error(err);
   } finally {
     loadingEl.classList.add("hidden");
