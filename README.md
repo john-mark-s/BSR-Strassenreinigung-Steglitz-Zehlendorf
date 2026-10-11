@@ -1,7 +1,8 @@
 # Straßenreinigung Steglitz-Zehlendorf
 
 Interactive map of street-cleaning classes (Reinigungsklassen) in the Berlin
-district of Steglitz-Zehlendorf, built with [Leaflet](https://leafletjs.com/).
+district of Steglitz-Zehlendorf, built with [Leaflet](https://leafletjs.com/).<br>
+The map can be found [here](https://john-mark-s.github.io/BSR-Strassenreinigung-Steglitz-Zehlendorf/)
 
 ## Files
 

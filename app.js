@@ -209,6 +209,10 @@ async function init() {
     maxBoundsViscosity: 1.0
   }).setView(DEFAULT_VIEW.center, DEFAULT_VIEW.zoom);
 
+  // Attribution
+  map.attributionControl.setPrefix('<a href="https://leafletjs.com" title="A JavaScript library for interactive maps">Leaflet</a>');
+  map.attributionControl.addAttribution("Erstellt mit Unterstützung von Claude");
+
   // Zoom control moved to bottom-left, separate from the search box (top-left)
   // and legend (bottom-right), so nothing crowds or stacks on top of anything else.
   L.control.zoom({ position: "bottomleft" }).addTo(map);
